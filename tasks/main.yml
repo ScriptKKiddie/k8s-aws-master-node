@@ -1,0 +1,88 @@
+- name: DEVELOPER INFO
+    debug:
+      msg: "Written by Shobhit Sharma (@ScriptKKiddie)"
+
+- name: Installing Docker
+  package:
+    name: docker
+    state: present
+
+- name: Enabling Docker Service
+  service:
+    name: docker
+    enabled: yes
+
+- name: Starting Docker Service
+  service: 
+    name: docker
+    state: started
+
+- name: Creating Repository
+  yum_repository:
+    name: kubernetes
+    description: Kubernetes
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+    enabled: yes
+    gpgcheck: yes
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg, https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+- name: Installing kubelet, kubeadm, kubectl
+  yum:
+    name: 
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+
+- name: Enabling kubelet service
+  service:
+    name: kubelet
+    enabled: yes
+
+- name: Configuring kubeadm
+  shell: kubeadm config images pull
+
+- name: Updating Drivers
+  copy:
+    src: files/daemon.json
+    dest: /etc/docker/daemon.json  
+
+- name: Restarting Docker
+  service:
+    name: docker
+    state: restarted
+
+- name: Installing iproute-tc
+  package:
+    name: iproute-tc
+    state: present
+
+- name: Initializing kubeadm
+  shell: "kubeadm init --pod-network-cidr=10.240.0.0/16 --ignore-preflight-errors=NumCPU --ignore-preflight-errors=Mem --ignore-preflight-errors=FileContent--proc-sys-net-bridge-bridge-nf-call-iptables"
+
+- name: Creating .kube directory
+  file:
+    path: $HOME/.kube
+    state: directory
+
+- name: Copyying admin.conf to user's kube config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: $HOME/.kube/config
+    remote_src: yes
+
+- name: Executing chown command
+  shell: "sudo chown $(id -u):$(id -g) $HOME/.kube/config"
+
+- name: Joining Node to K8S Cluster
+  shell: "echo 3 > /proc/sys/vm/drop_caches"
+
+- name: Generating join command
+  shell: kubeadm token create --print-join-command
+  register: join_command
+
+- name: Copying join command to local file
+  local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
+
+- name: Configuring flannel for Cluster Networking
+  shell: "kubectl apply  -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml"  
